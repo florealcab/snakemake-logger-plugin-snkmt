@@ -236,3 +236,11 @@ class RunInfo:
         return cls(
             per_rule_job_counts=per_rule_job_counts, total_job_count=total_job_count
         )
+
+@dataclass
+class ClusterGroupId:
+    cluster_group_id: str
+
+    @classmethod
+    def from_record(cls, record: LogRecord) -> "ClusterGroupId":
+        return cls(cluster_group_id=record.getMessage())

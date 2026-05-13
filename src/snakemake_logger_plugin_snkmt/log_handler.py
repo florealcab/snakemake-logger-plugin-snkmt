@@ -27,6 +27,7 @@ from snakemake_logger_plugin_snkmt.event_handlers import (
     GroupErrorHandler,
     ErrorHandler,
     RunInfoHandler,
+    ClusterGroupIdHandler,
 )
 
 
@@ -63,6 +64,7 @@ class sqliteLogHandler(Handler):
             LogEvent.GROUP_ERROR.value: GroupErrorHandler(),
             LogEvent.ERROR.value: ErrorHandler(),
             LogEvent.RUN_INFO.value: RunInfoHandler(),
+            LogEvent.CLUSTER_GROUP_ID: ClusterGroupIdHandler()
         }
 
         self.context = {
@@ -102,41 +104,20 @@ class sqliteLogHandler(Handler):
         try:
             event = getattr(record, "event", None)
 
-            if event:
-                event_value = event.value if hasattr(event, "value") else str(event).lower()
+            if not event:
+                return None
 
-                handler = self.event_handlers.get(event_value)
-                if not handler:
-                    return
+            event_value = event.value if hasattr(event, "value") else str(event).lower()
 
-                with self.session_scope() as session:
-                    handler.handle(record, session, self.context)
-            else:
-                self._handle_plain_record(record)
+            handler = self.event_handlers.get(event_value)
+            if not handler:
+                return
+
+            with self.session_scope() as session:
+                handler.handle(record, session, self.context)
 
         except Exception:
             self.handleError(record)
-
-    _SLURM_UUID_RE = re.compile(
-        r"SLURM run ID:\s*([a-f0-9\-]{36})",
-        re.IGNORECASE,
-    )
-
-    def _handle_plain_record(self, record: LogRecord) -> None:
-        """Gère les records sans LogEvent (émis par les executor plugins)."""
-        msg = record.getMessage()
-
-        m = self._SLURM_UUID_RE.search(msg)
-        if m:
-            self.context["slurm_group_id"] = m.group(1)
-
-            # Add in DB if workflow already exists:
-            workflow_id = self.context.get("current_workflow_id")
-            if workflow_id:
-                with self.session_scope() as session:
-                    workflow = session.query(Workflow).filter_by(id=workflow_id).first()
-                    if workflow:
-                        workflow.slurm_group_id = m.group(1)  # type: ignore
 
     def close(self) -> None:
         """Close the handler and update the workflow status."""

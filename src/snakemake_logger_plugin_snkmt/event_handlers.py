@@ -97,7 +97,7 @@ class WorkflowStartedHandler(EventHandler):
             dryrun=context["dryrun"],
             status=Status.RUNNING,
             # Apply SLURM UUID if already in context:
-            slurm_group_id=context.get("slurm_group_id"),
+            cluster_group_id=context.get("cluster_group_id"),
         )
 
         session.add(workflow)
@@ -303,3 +303,14 @@ class GroupErrorHandler(EventHandler):
                 if job:
                     job.status = Status.ERROR
                     job.end_time = datetime.utcnow()
+
+
+class ClusterGroupIdHandler(EventHandler):
+    def handle(self, record, session, context):
+        data = parsers.ClusterGroupId.from_record(record)
+        context["cluster_group_id"] = data.cluster_group_id
+        workflow_id = context.get("current_workflow_id")
+        if workflow_id:
+            workflow = session.query(Workflow).filter_by(id=workflow_id).first()
+            if workflow:
+                workflow.cluster_group_id = data.cluster_group_id
