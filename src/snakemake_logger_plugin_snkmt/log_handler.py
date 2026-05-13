@@ -102,7 +102,7 @@ class sqliteLogHandler(Handler):
         try:
             event = getattr(record, "event", None)
 
-            if not event:
+            if event:
                 event_value = event.value if hasattr(event, "value") else str(event).lower()
 
                 handler = self.event_handlers.get(event_value)
