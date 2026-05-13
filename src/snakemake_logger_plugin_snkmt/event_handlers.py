@@ -96,6 +96,8 @@ class WorkflowStartedHandler(EventHandler):
             snakefile=workflow_data.snakefile,
             dryrun=context["dryrun"],
             status=Status.RUNNING,
+            # Apply SLURM UUID if already in context:
+            slurm_group_id=context.get("slurm_group_id"),
         )
 
         session.add(workflow)

@@ -1,4 +1,5 @@
 import logging
+import re
 from contextlib import contextmanager
 from sqlalchemy.orm import Session
 from typing import Optional, Generator, Any
@@ -102,19 +103,40 @@ class sqliteLogHandler(Handler):
             event = getattr(record, "event", None)
 
             if not event:
-                return
+                event_value = event.value if hasattr(event, "value") else str(event).lower()
 
-            event_value = event.value if hasattr(event, "value") else str(event).lower()
+                handler = self.event_handlers.get(event_value)
+                if not handler:
+                    return
 
-            handler = self.event_handlers.get(event_value)
-            if not handler:
-                return
-
-            with self.session_scope() as session:
-                handler.handle(record, session, self.context)
+                with self.session_scope() as session:
+                    handler.handle(record, session, self.context)
+            else:
+                self._handle_plain_record(record)
 
         except Exception:
             self.handleError(record)
+
+    _SLURM_UUID_RE = re.compile(
+        r"SLURM run ID:\s*([a-f0-9\-]{36})",
+        re.IGNORECASE,
+    )
+
+    def _handle_plain_record(self, record: LogRecord) -> None:
+        """Gère les records sans LogEvent (émis par les executor plugins)."""
+        msg = record.getMessage()
+
+        m = self._SLURM_UUID_RE.search(msg)
+        if m:
+            self.context["slurm_group_id"] = m.group(1)
+
+            # Add in DB if workflow already exists:
+            workflow_id = self.context.get("current_workflow_id")
+            if workflow_id:
+                with self.session_scope() as session:
+                    workflow = session.query(Workflow).filter_by(id=workflow_id).first()
+                    if workflow:
+                        workflow.slurm_group_id = m.group(1)  # type: ignore
 
     def close(self) -> None:
         """Close the handler and update the workflow status."""
